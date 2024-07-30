@@ -1,0 +1,14 @@
+**********************************************************************************
+For discussion & support, join the Discord: https://discord.com/invite/cmZY2tH
+Be sure to sign up for the mailing list at https://infinitypbr.com
+**********************************************************************************
+
+There are a lot of shared files, scripts, tools, that come with Infinity PBR stuff. Sometimes I'm unable to quickly update all of the packs when a bug is fixed in one of these.
+
+The "Support Files" is an Asset Store package that will be kept more up-to-date than the main packs between major update rounds.
+
+You can get it free here: https://assetstore.unity.com/packages/tools/utilities/infinity-pbr-support-files-160921?aid=1100lxWw
+
+Install this after installing any Infinity PBR stuff to know that you have the latest files.
+
+In all cases, best practice when importing new content is to check the import window and figure out what is being imported, and if anything is being updated, and to NOT import anything you do not want to import :)
