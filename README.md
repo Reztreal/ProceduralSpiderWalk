@@ -3,10 +3,7 @@
 Welcome to the **Spider Procedural Walk** repository! This is a unity project that uses [Animation Rigging](https://docs.unity3d.com/Packages/com.unity.animation.rigging@1.3/manual/index.html) package to procedurally animate a spider.
 
 ## Demo
-<video width="600" controls>
-  <source src="Gif/spider_walk.webm" type="video/webm">
-  Your browser does not support the video tag.
-</video>
+![Spider Procedural Walk](./Gif/spider_walk.gif)
 
 ## Features
 
