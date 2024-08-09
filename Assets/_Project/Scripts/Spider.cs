@@ -1,63 +1,48 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
+using Unity.VisualScripting;
 using UnityEngine;
-using Random = UnityEngine.Random;
 
 public class Spider : MonoBehaviour
 {
-    private Player3D player3D;
-
-    [SerializeField] private Transform[] targetGroup1;
-    [SerializeField] private Transform[] orbits, targets, legs;
-
-    [SerializeField] private float[] orbitLegDistance; 
-
-    [SerializeField, Range(0, 360)] private float arcRange = 270;
-    [SerializeField] private int arcResolution = 4;
-    [SerializeField] private float arcRadius = 0.3f;
-    [SerializeField] private LayerMask arcLayer;
+    [SerializeField] private Transform body;
     
-    [SerializeField] private float stepTime = 0.25f;
-    [SerializeField] private float stepHeight = 0.6f;
-    [SerializeField] private AnimationCurve stepHeightCurve;
-    [SerializeField, Range(0, 1)] float stepDelayRand = 0f;
-    [SerializeField, Range(0, 1)] float desyncG2 = 1;
+    [Header("Transforms")]
+    [SerializeField] private Transform[] targets;
+    [SerializeField] private Transform[] orbits;
+    [SerializeField] private Vector3[] targetPosOld;
+    [SerializeField] private Transform[] legGroup1;
+    [SerializeField] private Transform[] legGroup2;
 
-    private void OnValidate()
-    {
-        Cache();
-    }
+    [SerializeField] private bool[] targetGrounded;
+    [SerializeField] private LayerMask layer;
 
-    private void OnEnable()
-    {
-        StartCoroutine(StepLoop());
-    }
+    [Header("Step Settings")]
+    [SerializeField] private AnimationCurve stepCurve;
+    [SerializeField] private float stepDuration = 0.5f;
+    [SerializeField] private float stepLength = 0.5f;
+    [SerializeField] private float stepHeight = 0.2f;
+    [SerializeField] private float stepOffset = 0.1f;
+    
+    [Header("Adjustment Settings")]
+    [SerializeField] private float positionAdjustSpeed = 5;
+    [SerializeField] private float rotationAdjustSpeed = 5;
+    [SerializeField] private float targetHeight;
+    
+    private RaycastHit hit;
+    private Vector3 distance;
 
-    private void OnDisable()
-    {
-        StopAllCoroutines();
-    }
 
-    private void OnDrawGizmos()
+    private void Start()
     {
-        for (int i = 0; i < orbits.Length; i++)
-        {
-            UpdateOrbitLegDistance(orbits[i], orbits[i].parent, legs[i], orbitLegDistance[i], true);
-        }
+        targetPosOld = new Vector3[targets.Length];
+        targetGrounded = new bool[targets.Length];
         
-        EndStepGizmos();
-    }
-
-    private void Cache()
-    {
-        player3D = GetComponent<Player3D>();
-        orbitLegDistance = new float[orbits.Length];
-        
-        for (int i = 0; i < orbits.Length; i++)
+        for (int i = 0; i < targets.Length; i++)
         {
-            orbitLegDistance[i] = (orbits[i].transform.position - legs[i].transform.position).magnitude;
+            targetPosOld[i] = targets[i].position;
+            targetGrounded[i] = true;
         }
     }
 
@@ -65,192 +50,114 @@ public class Spider : MonoBehaviour
     {
         for (int i = 0; i < orbits.Length; i++)
         {
-            UpdateOrbitLegDistance(orbits[i], orbits[i].parent, legs[i], orbitLegDistance[i]);
-            CalculateStepEndPoint(orbits[i]);
-        }
-    }
+            targets[i].position = targetPosOld[i];
 
-    private void UpdateOrbitLegDistance(Transform orbit, Transform orbitParent, Transform leg, float orbitLegDist, bool gizmos= false)
-    {
-        Vector3 pos = orbitParent.position;
-        Quaternion rot = orbitParent.rotation;
-        float dist = (pos - leg.position).magnitude;
-
-        Quaternion relativeRotation = Quaternion.Inverse(transform.rotation) * rot;
-
-        bool checkSup = dist < orbitLegDist;
-
-        for (int i = 0; i < 50 && dist < orbitLegDist * 1.5f; i++)
-        {
-            if (PhysicsExtensions.ArcCast(pos, rot, arcRange, arcRadius, arcResolution, arcLayer, out RaycastHit hit))
+            if (Physics.Raycast(orbits[i].position, -transform.up, out hit, 10, layer))
             {
-                Vector3 nextPos = hit.point;
-                Quaternion nextRot = MathExtensions.RotationMatchUp(rot, hit.normal);
-                float nextDist = (nextPos - leg.position).magnitude;
-                
-                if (gizmos)
+                if (Vector3.Distance(targets[i].position, hit.point) > stepLength)
                 {
-                    Gizmos.color = new Color(0.9f, 0.5f, 0.5f, 0.3f);
-                    Gizmos.DrawSphere(pos, 0.05f);
-                }
-
-                if (checkSup == nextDist > orbitLegDist)
-                {
-                    float progress = Mathf.InverseLerp(dist, nextDist, orbitLegDist);
-
-                    if (gizmos)
+                    if (CanStep(i))
                     {
-                        Gizmos.color = new Color(0.9f, 0.5f, 0.5f, 1);
-                        Gizmos.DrawSphere(Vector3.Lerp(pos, nextPos, progress), 0.1f);
+                        StartCoroutine(Step(i, hit.point, hit.normal));
                     }
-
-                    else
-                    {
-                        orbit.position = Vector3.Lerp(pos, nextPos, progress);
-                        orbit.rotation = Quaternion.Lerp(rot * Quaternion.Inverse(relativeRotation),
-                            nextRot * Quaternion.Inverse(relativeRotation), progress);
-                    }
-
-                    checkSup = !checkSup;
                 }
-
-                pos = nextPos;
-                rot = nextRot;
-                dist = nextDist;
             }
         }
-    }
+        
 
-    public void EndStepGizmos()
-    {
         for (int i = 0; i < orbits.Length; i++)
         {
-            CalculateStepEndPoint(orbits[i], true);
+            Debug.DrawLine(orbits[i].position, orbits[i].position + -transform.up * 10, Color.red);
         }
+        
+        AdjustBodyPosition();
+        AdjustBodyRotation();
     }
 
-
-    private (Vector3, Quaternion) CalculateStepEndPoint(Transform orbit, bool gizmos = false)
+    private bool CanStep(int index)
     {
-        if (player3D.Velocity == Vector2.zero)
+        bool isGroup1 = Array.IndexOf(legGroup1, targets[index]) >= 0;
+        Transform[] oppositeGroup = isGroup1 ? legGroup2 : legGroup1;
+
+        foreach (Transform leg in oppositeGroup)
         {
-            return (orbit.position, orbit.rotation);
+            int oppositeIndex = Array.IndexOf(targets, leg);
+            if (!targetGrounded[oppositeIndex])
+                return false;
         }
         
-        Vector3 playerVelocity = orbit.TransformVector(player3D.Velocity3);
+        return true;
+    }
 
-        if (playerVelocity == Vector3.zero || playerVelocity == orbit.up)
-        {
-            return (orbit.position, orbit.rotation);
-        }
+    private IEnumerator Step(int legIndex, Vector3 targetPosition, Vector3 targetNormal)
+    {
+        targetGrounded[legIndex] = false;
         
-        Vector3 pos = orbit.position;
-        Quaternion rot = Quaternion.LookRotation(playerVelocity, orbit.up);
-
-        float distance = player3D.Speed * stepTime / 2;
+        Vector3 endPos = targetPosition + (targetPosition - targetPosOld[legIndex]).normalized * stepOffset;
         
-        if (gizmos)
-            Gizmos.color = new Color(1f, 0f, 0f, 0.4f);
-
-        for (int i = 0; i < 100; i++)
+        float time = 0;
+        
+        while (time < stepDuration)
         {
-            if (PhysicsExtensions.ArcCast(pos, rot, arcRange, arcRadius, arcResolution, arcLayer, out RaycastHit hit))
-            {
-                if (gizmos)
-                    Gizmos.DrawSphere(pos, 0.05f);
-
-                float currentDistance = (hit.point - pos).magnitude;
-
-                if (currentDistance >= distance)
-                {
-                    Vector3 nextPos = hit.point;
-                    Quaternion nextRot = MathExtensions.RotationMatchUp(rot, hit.normal);
-
-                    float progress = Mathf.InverseLerp(0, currentDistance, distance);
-
-                    pos = Vector3.Lerp(pos, nextPos, progress);
-                    rot = Quaternion.Lerp(rot, nextRot, progress);
-
-                    if (gizmos)
-                    {
-                        Gizmos.color = new Color(1f, 0f, 0f, 1f);
-                        Gizmos.DrawSphere(pos, 0.1f);
-                    }
-
-                    break;
-                }
-
-                distance -= currentDistance;
-
-                pos = hit.point;
-                rot.MatchUp(hit.normal);
-            }
+            time += Time.deltaTime;
+            float t = time / stepDuration;
+            float s = stepCurve.Evaluate(t);
             
-            else break;
+            Vector3 pos = Vector3.Lerp(targetPosOld[legIndex], endPos, t);
+            pos.y += s * stepHeight;
+            
+            targetPosOld[legIndex] = pos;
+            
+            yield return null;
+        }
+        
+        targetPosOld[legIndex] = endPos;
+        targetGrounded[legIndex] = true;
+    }
+    
+    private void AdjustBodyPosition(bool gizmo = false)
+    {
+        float averageOffset = 0f;
+
+        for (int i = 0; i < targets.Length; i++)
+        {
+            averageOffset += Vector3.Dot(targets[i].position - body.position, transform.up);
         }
 
-        return (pos, rot);
+        averageOffset /= targets.Length;
+
+        Vector3 targetPosition = body.position + transform.up * (averageOffset + targetHeight);
+
+        if (gizmo)
+        {
+            Gizmos.color = Color.blue;
+            Gizmos.DrawSphere(targetPosition, 0.1f);
+        }
+        else
+        {
+            body.position = Vector3.Lerp(body.position, targetPosition, Time.deltaTime * positionAdjustSpeed);
+        }
     }
 
-    private IEnumerator StepLoop()
+    private void AdjustBodyRotation()
     {
-        bool G1 = true;
+        Vector3 normal = Vector3.zero;
 
-        while (true)
+        for (int i = 0; i < targets.Length; i++)
         {
-            for (int i = 0; i < targets.Length; i++)
+            if (targetGrounded[i])
             {
-                if (targetGroup1.Contains(targets[i]) == G1)
+                if (Physics.Raycast(orbits[i].position, -transform.up, out RaycastHit hitInfo, 10, layer))
                 {
-                    StartCoroutine(DelayStep(i, stepTime * stepDelayRand * Random.value));
+                    normal += hitInfo.normal;
                 }
             }
-
-            yield return new WaitForSeconds(stepTime * (G1 ? desyncG2 : 2 - desyncG2));
-
-            G1 = !G1;
         }
-    }
-
-    private IEnumerator DelayStep(int index, float delay)
-    {
-        if (delay > 0)
-        {
-            yield return new WaitForSeconds(delay);
-        }
-
-        StartCoroutine(Step(index));
-    }
-
-    private IEnumerator Step(int idx)
-    {
-        float t = 0, progress;
-
-        Transform target = targets[idx];
-        Transform orbit = orbits[idx];
-        Transform leg = legs[idx];
-
-        Vector3    targetStartPosProj = leg.InverseTransformPoint(target.position);
-        Quaternion targetStartRotProj = Quaternion.Inverse(leg.rotation) * target.rotation;
-
-        while (t < stepTime)
-        {
-            t += Time.deltaTime;
-            progress = Mathf.Clamp01(t / stepTime);
-
-            Vector3    startPos, endPos;
-            Quaternion startRot, endRot;
-            startPos = leg.TransformPoint(targetStartPosProj);
-            startRot = leg.rotation * targetStartRotProj;
-            (endPos, endRot) = CalculateStepEndPoint(orbit);
-
-            target.position = Vector3.Lerp(startPos, endPos, progress);
-            target.position += stepHeight * player3D.SpeedProgress * stepHeightCurve.Evaluate(progress) * leg.up;
-
-            target.rotation = Quaternion.Lerp(startRot, endRot, progress);
-
-            if (t < stepTime)
-                yield return new WaitForEndOfFrame();
-        }
+        
+        normal.Normalize();
+        
+        Quaternion rot = Quaternion.FromToRotation(transform.up, normal) * body.rotation;
+        
+        body.rotation = Quaternion.Lerp(body.rotation, rot, Time.deltaTime * rotationAdjustSpeed);
     }
 }

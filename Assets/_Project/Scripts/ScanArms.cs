@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class ScanArms : Scan
+public class ScanArms : MonoBehaviour
 {
     [SerializeField] private int armCount = 11;
     [SerializeField] private float armLength = 2;
@@ -18,12 +18,12 @@ public class ScanArms : Scan
     [SerializeField] private bool gizmoDrawPoint = true;
     [SerializeField] private bool gizmoDrawLink = true;
 
-    private void OnDrawGizmosSelected()
+    private void OnDrawGizmos()
     {
         Scan(true);
     }
 
-    public override List<(Vector3 pos, Quaternion rot, float weight)> Points()
+    public List<(Vector3 pos, Quaternion rot, float weight)> Points()
     {
         return Scan(false);
     }
